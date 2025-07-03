@@ -21,7 +21,9 @@ public class AudioManager : MonoBehaviour
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     private static void Setup()
     {
+        if (!ReferenceEquals(instance, null)) return;
         instance = new GameObject("AudioManager").AddComponent<AudioManager>();
+        DontDestroyOnLoad(instance.gameObject);
         
         instance.sources = new(2);
         instance.sources.Add(instance.gameObject.AddComponent<AudioSource>());
