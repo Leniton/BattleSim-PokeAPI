@@ -136,9 +136,7 @@ public class BagMenu : ContextMenu<Bag>
     private void LoadScreenData()
     {
         if(itemList == null) return;
-        
-        downButton.gameObject.SetActive(itemOffset < offsetRange);
-        upButton.gameObject.SetActive(itemOffset > 0);
+        UpdateButtonsState();
 
         for (int i = 0; i < contextSelection.itemCount; i++)
         {
@@ -161,6 +159,8 @@ public class BagMenu : ContextMenu<Bag>
 
     private void ShowItemDetails(int id)
     {
+        UpdateButtonsState();
+        
         int itemId = id + itemOffset;
         if (itemId >= itemList.Count)
         {
@@ -183,6 +183,13 @@ public class BagMenu : ContextMenu<Bag>
         ItemModel item = itemList[itemId];
         itemIcon.sprite = item.sprite;
         StartCoroutine(Announcer.AnnounceCoroutine(item.effect));
+    }
+
+    private void UpdateButtonsState()
+    {
+        int maxId = Mathf.Min(contextSelection.itemCount - 1, itemList.Count);
+        downButton.gameObject.SetActive(contextSelection.selectedId < maxId || itemOffset < offsetRange);
+        upButton.gameObject.SetActive(contextSelection.selectedId > 0 || itemOffset > 0);
     }
 
     private IEnumerator ScrollDelay(int offset)
