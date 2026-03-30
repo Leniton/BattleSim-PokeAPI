@@ -1,3 +1,10 @@
+## [1.0.1](https://github.com/Leniton/BattleSim-PokeAPI/compare/pokemon-1.0.0...pokemon-1.0.1) (2026-03-30)
+
+
+### Bug Fixes
+
+* change serial ([f3a1371](https://github.com/Leniton/BattleSim-PokeAPI/commit/f3a137179deea48fba3c58dfdaf69f10c10f37e0))
+
 # 1.0.0 (2026-03-30)
 
 
