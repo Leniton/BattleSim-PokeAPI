@@ -1,0 +1,151 @@
+name: Build WebGL on Release
+
+on:
+  push:
+    branches:
+      - "*-hml"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions: write-all
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    outputs:
+      released_tag: ${{ steps.release_meta.outputs.released_tag }}
+      released: ${{ steps.release_meta.outputs.released }}
+
+    steps:
+      - name: Checkout full history
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24
+
+      - name: Install deps
+        run: npm install
+
+      - name: Run semantic-release
+        id: semantic
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npx semantic-release
+        continue-on-error: true
+
+      - name: Get released tag
+        id: release_meta
+        shell: bash
+        run: |
+          git fetch --tags --force
+
+          TAG=$(git tag --points-at HEAD --sort=-version:refname | head -n 1)
+
+          if [ -z "$TAG" ]; then
+            echo "Nenhum release gerado (commit nao segue conventional commits). Pulando build."
+            echo "released=false" >> "$GITHUB_OUTPUT"
+            echo "released_tag=" >> "$GITHUB_OUTPUT"
+          else
+            echo "released=true" >> "$GITHUB_OUTPUT"
+            echo "released_tag=$TAG" >> "$GITHUB_OUTPUT"
+            echo "Tag gerada: $TAG"
+          fi
+
+  build_webgl:
+    needs: release
+    runs-on: ubuntu-latest
+    if: needs.release.outputs.released == 'true'
+
+    steps:
+      - name: Checkout released tag
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.release.outputs.released_tag }}
+          lfs: true
+          fetch-depth: 0
+
+      - name: Extract game name and version from tag
+        id: meta
+        shell: bash
+        run: |
+          TAG="${{ needs.release.outputs.released_tag }}"
+
+          if [[ "$TAG" =~ ^(.+)-([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
+            GAME_NAME="${BASH_REMATCH[1]}"
+            VERSION="${BASH_REMATCH[2]}"
+          else
+            echo "Tag fora do padrÃ£o esperado: $TAG"
+            exit 1
+          fi
+
+          echo "game_name=$GAME_NAME" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Free disk space
+        uses: jlumbroso/free-disk-space@v1.3.1
+
+      - name: Cache Library
+        uses: actions/cache@v4
+        with:
+          path: Library
+          key: Library-WebGL-${{ runner.os }}-${{ hashFiles('Packages/manifest.json', 'Assets/**', 'ProjectSettings/**') }}
+          restore-keys: |
+            Library-WebGL-${{ runner.os }}-
+
+      # Test
+      - name: Run tests
+        uses: game-ci/unity-test-runner@v4
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+        with:
+          githubToken: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Unity Build WebGL
+        uses: game-ci/unity-builder@v4
+        env:
+          UNITY_SERIAL: ${{ secrets.UNITY_SERIAL }}
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+        with:
+          versioning: "Custom"
+          version: ${{ steps.meta.outputs.version }}
+          projectPath: .
+          targetPlatform: WebGL
+          buildName: ${{ steps.meta.outputs.game_name }}
+          buildsPath: build
+          gitPrivateToken: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload WebGL build
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.meta.outputs.game_name }}-${{ steps.meta.outputs.version }}
+          path: build/WebGL/*
+          retention-days: 5
+
+      # - name: Zip Build WebGl
+      #   id: zip_build
+      #   run: |
+      #     echo "=== Build directory contents ==="
+      #     ls -R build/ || true
+      #     BUILD_DIR="build/WebGL/${{ steps.meta.outputs.game_name }}"
+      #     ZIP_NAME="${{ steps.meta.outputs.game_name }}-${{ steps.meta.outputs.version }}.zip"
+      #     cd "$BUILD_DIR"
+      #     zip -r "../../$ZIP_NAME" .
+      #     echo "zip_path=$ZIP_NAME" >> "$GITHUB_OUTPUT"
+
+      # - name: Upload asset to GitHub Release
+      #   env:
+      #     GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      #   run: |
+      #     gh release upload "${{ needs.release.outputs.released_tag }}" \
+      #       "${{ steps.zip_build.outputs.zip_path }}" \
+      #       --clobber
